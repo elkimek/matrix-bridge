@@ -16,17 +16,7 @@ Send and read end-to-end encrypted messages in Matrix rooms from your terminal o
 
 ## Install
 
-### From GitHub Releases
-
-Download the latest binary for your platform from [Releases](https://github.com/elkimek/matrix-bridge/releases).
-
-### From crates.io
-
-```bash
-cargo install matrix-bridge
-```
-
-### From source
+### From source (currently the only option)
 
 ```bash
 git clone https://github.com/elkimek/matrix-bridge.git
