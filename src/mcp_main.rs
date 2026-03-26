@@ -1,11 +1,9 @@
 // Thin entry point for `matrix-bridge-mcp` binary.
 // Equivalent to `matrix-bridge mcp-server`.
 
-mod cli;
 mod client;
 mod config;
 mod error;
-mod format;
 mod mcp;
 mod trust;
 

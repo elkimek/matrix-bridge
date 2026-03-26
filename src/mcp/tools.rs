@@ -1,10 +1,9 @@
 use crate::client::MatrixBridgeClient;
-use crate::error::Result;
 use rmcp::{
     ServerHandler, ServiceExt, tool, tool_router,
     handler::server::router::{Router, tool::ToolRouter},
     handler::server::wrapper::{Json, Parameters},
-    model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
+    model::{ServerCapabilities, ServerInfo},
     schemars,
 };
 use serde::{Deserialize, Serialize};
@@ -120,13 +119,13 @@ impl BridgeServer {
     async fn send_message(
         &self,
         Parameters(params): Parameters<SendMessageParams>,
-    ) -> Json<SendMessageOutput> {
+    ) -> std::result::Result<Json<SendMessageOutput>, String> {
         let client = self.client.read().await;
         let event_id = client
             .send_message(&params.room_id, &params.message, params.mention.as_deref())
             .await
-            .unwrap_or_else(|e| format!("error: {}", e));
-        Json(SendMessageOutput { event_id })
+            .map_err(|e| e.to_string())?;
+        Ok(Json(SendMessageOutput { event_id }))
     }
 
     #[tool(
@@ -136,10 +135,10 @@ impl BridgeServer {
     async fn send_and_wait(
         &self,
         Parameters(params): Parameters<SendAndWaitParams>,
-    ) -> Json<SendAndWaitOutput> {
+    ) -> std::result::Result<Json<SendAndWaitOutput>, String> {
         let client = self.client.read().await;
         let timeout = params.timeout.clamp(1, 300);
-        match client
+        let result = client
             .send_and_wait(
                 &params.room_id,
                 &params.message,
@@ -147,21 +146,18 @@ impl BridgeServer {
                 timeout,
             )
             .await
-        {
-            Ok(Some(msg)) => Json(SendAndWaitOutput {
-                reply: Some(MessageOutput {
-                    sender: msg.sender,
-                    body: msg.body,
-                    timestamp: msg.timestamp,
-                    event_id: msg.event_id,
-                }),
-                timed_out: false,
+            .map_err(|e| e.to_string())?;
+
+        let timed_out = result.is_none();
+        Ok(Json(SendAndWaitOutput {
+            reply: result.map(|msg| MessageOutput {
+                sender: msg.sender,
+                body: msg.body,
+                timestamp: msg.timestamp,
+                event_id: msg.event_id,
             }),
-            _ => Json(SendAndWaitOutput {
-                reply: None,
-                timed_out: true,
-            }),
-        }
+            timed_out,
+        }))
     }
 
     #[tool(
@@ -171,13 +167,13 @@ impl BridgeServer {
     async fn read_messages(
         &self,
         Parameters(params): Parameters<ReadMessagesParams>,
-    ) -> Json<ReadMessagesOutput> {
+    ) -> std::result::Result<Json<ReadMessagesOutput>, String> {
         let client = self.client.read().await;
         let limit = params.limit.clamp(1, 100);
         let messages = client
             .read_messages(&params.room_id, limit)
             .await
-            .unwrap_or_default()
+            .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|m| !m.decryption_failed)
             .map(|m| MessageOutput {
@@ -187,7 +183,7 @@ impl BridgeServer {
                 event_id: m.event_id,
             })
             .collect();
-        Json(ReadMessagesOutput { messages })
+        Ok(Json(ReadMessagesOutput { messages }))
     }
 
     #[tool(
@@ -217,13 +213,13 @@ impl BridgeServer {
     async fn join_room(
         &self,
         Parameters(params): Parameters<JoinRoomParams>,
-    ) -> Json<JoinRoomOutput> {
+    ) -> std::result::Result<Json<JoinRoomOutput>, String> {
         let client = self.client.read().await;
         let room_id = client
             .join_room(&params.room_id)
             .await
-            .unwrap_or_else(|e| format!("error: {}", e));
-        Json(JoinRoomOutput { room_id })
+            .map_err(|e| e.to_string())?;
+        Ok(Json(JoinRoomOutput { room_id }))
     }
 }
 
@@ -249,7 +245,7 @@ impl BridgeServer {
 }
 
 /// Start the MCP server on stdio.
-pub async fn serve(client: Arc<RwLock<MatrixBridgeClient>>) -> Result<()> {
+pub async fn serve(client: Arc<RwLock<MatrixBridgeClient>>) -> crate::error::Result<()> {
     use rmcp::transport::io::stdio;
 
     let router = BridgeServer::new(client);

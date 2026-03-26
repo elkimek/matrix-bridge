@@ -1,7 +1,6 @@
 use crate::error::{BridgeError, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 /// Configuration for the Matrix bridge.
@@ -53,21 +52,24 @@ fn default_device_name() -> String {
 }
 
 fn default_store_path() -> String {
-    default_dir()
-        .join("store")
-        .to_string_lossy()
-        .into_owned()
+    default_dir_result()
+        .map(|d| d.join("store").to_string_lossy().into_owned())
+        .unwrap_or_else(|_| ".matrix-bridge/store".to_string())
 }
 
 fn default_trust_mode() -> TrustMode {
     TrustMode::Tofu
 }
 
-/// Returns ~/.matrix-bridge
-pub fn default_dir() -> PathBuf {
+fn default_dir_result() -> Result<PathBuf> {
     dirs::home_dir()
-        .expect("could not determine home directory")
-        .join(".matrix-bridge")
+        .map(|d| d.join(".matrix-bridge"))
+        .ok_or_else(|| BridgeError::Config("could not determine home directory".to_string()))
+}
+
+/// Returns ~/.matrix-bridge (or error if HOME is unset)
+pub fn default_dir() -> PathBuf {
+    default_dir_result().unwrap_or_else(|_| PathBuf::from(".matrix-bridge"))
 }
 
 /// Returns the config file path: ~/.matrix-bridge/config.json
@@ -80,22 +82,53 @@ pub fn credentials_path(config: &Config) -> PathBuf {
     PathBuf::from(&config.store_path).join("credentials.json")
 }
 
-/// Ensure a directory exists with 0700 permissions.
+/// Ensure a directory exists with restricted permissions.
 fn ensure_dir(path: &Path) -> Result<()> {
     if !path.exists() {
         fs::create_dir_all(path)?;
     }
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    set_dir_permissions(path)?;
     Ok(())
 }
 
-/// Write a file with 0600 permissions.
+/// Write a file atomically with restricted permissions.
+/// Writes to a temp file first, sets permissions, then renames — avoids TOCTOU race.
 fn write_secure(path: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir(parent)?;
     }
-    fs::write(path, contents)?;
+
+    let tmp_path = path.with_extension("tmp");
+    fs::write(&tmp_path, contents)?;
+    set_file_permissions(&tmp_path)?;
+    fs::rename(&tmp_path, path)?;
+    Ok(())
+}
+
+// Platform-specific permission helpers
+
+#[cfg(unix)]
+fn set_file_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_dir_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_file_permissions(_path: &Path) -> Result<()> {
+    // Windows: rely on user-profile ACLs, no chmod equivalent
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_dir_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
@@ -133,7 +166,6 @@ impl Config {
         if let Some(ref pattern) = self.notify_on_mention {
             return pattern.clone();
         }
-        // Extract local part from @user:server
         self.user_id
             .strip_prefix('@')
             .and_then(|s| s.split(':').next())

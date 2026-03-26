@@ -1,8 +1,6 @@
 use crate::client::MatrixBridgeClient;
 use matrix_sdk::{
-    ruma::events::room::message::{
-        OriginalSyncRoomMessageEvent, RoomMessageEventContent,
-    },
+    ruma::events::room::message::OriginalSyncRoomMessageEvent,
     Room,
 };
 use std::sync::Arc;

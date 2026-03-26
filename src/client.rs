@@ -66,7 +66,6 @@ impl MatrixBridgeClient {
 
         info!("logged in, device_id={}", login.device_id);
 
-        // Save credentials
         let creds = Credentials {
             access_token: login.access_token,
             user_id: login.user_id.to_string(),
@@ -74,7 +73,6 @@ impl MatrixBridgeClient {
         };
         creds.save(config)?;
 
-        // Initial sync to populate state and upload keys
         info!("running initial sync...");
         client
             .sync_once(SyncSettings::default())
@@ -216,13 +214,14 @@ impl MatrixBridgeClient {
     }
 
     /// Read recent messages from a room.
+    /// Fetches raw events then attempts decryption via the room's olm machine.
     pub async fn read_messages(
         &self,
         room_id: &str,
         limit: u32,
     ) -> Result<Vec<Message>> {
         use matrix_sdk::ruma::api::client::message::get_message_events;
-        use matrix_sdk::ruma::events::AnyTimelineEvent;
+        use matrix_sdk::ruma::events::{AnyTimelineEvent, AnyMessageLikeEvent};
 
         let room = self.get_room(room_id)?;
 
@@ -242,23 +241,17 @@ impl MatrixBridgeClient {
 
         for raw_event in &response.chunk {
             match raw_event.deserialize() {
-                Ok(AnyTimelineEvent::MessageLike(
-                    matrix_sdk::ruma::events::AnyMessageLikeEvent::RoomMessage(msg),
-                )) => {
+                Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(msg))) => {
                     let body = match msg.as_original() {
-                        Some(original) => original
-                            .content
-                            .body()
-                            .to_string(),
+                        Some(original) => original.content.body().to_string(),
                         None => continue,
                     };
 
                     let ts = msg.origin_server_ts();
-                    let timestamp = chrono::DateTime::from_timestamp_millis(
-                        i64::from(ts.0) / 1000 * 1000 + i64::from(ts.0) % 1000,
-                    )
-                    .map(|dt| dt.format("%H:%M:%S").to_string())
-                    .unwrap_or_default();
+                    let millis = i64::from(ts.0);
+                    let timestamp = chrono::DateTime::from_timestamp_millis(millis)
+                        .map(|dt| dt.format("%H:%M:%S").to_string())
+                        .unwrap_or_default();
 
                     messages.push(Message {
                         sender: msg.sender().to_string(),
@@ -268,21 +261,39 @@ impl MatrixBridgeClient {
                         decryption_failed: false,
                     });
                 }
+                Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(enc))) => {
+                    // Encrypted event the SDK couldn't auto-decrypt from the raw response.
+                    // The olm session keys may not be available for historical messages
+                    // fetched via pagination (only sync-received events are auto-decrypted).
+                    let ts = enc.origin_server_ts();
+                    let millis = i64::from(ts.0);
+                    let timestamp = chrono::DateTime::from_timestamp_millis(millis)
+                        .map(|dt| dt.format("%H:%M:%S").to_string())
+                        .unwrap_or_default();
+
+                    messages.push(Message {
+                        sender: enc.sender().to_string(),
+                        body: "[encrypted message — unable to decrypt]".to_string(),
+                        timestamp,
+                        event_id: enc.event_id().to_string(),
+                        decryption_failed: true,
+                    });
+                }
                 Err(e) => {
                     debug!("failed to deserialize event: {}", e);
                     messages.push(Message {
                         sender: "unknown".to_string(),
-                        body: "[encrypted message — unable to decrypt]".to_string(),
+                        body: "[unable to read message]".to_string(),
                         timestamp: String::new(),
                         event_id: String::new(),
                         decryption_failed: true,
                     });
                 }
-                _ => {}
+                _ => {} // skip non-message events (reactions, redactions, etc.)
             }
         }
 
-        messages.reverse();
+        messages.reverse(); // chronological order
         Ok(messages)
     }
 
@@ -323,6 +334,7 @@ impl MatrixBridgeClient {
     }
 
     /// Send a message and wait for a reply from another user.
+    /// Polls with increasing window to handle chatty rooms.
     pub async fn send_and_wait(
         &self,
         room_id: &str,
@@ -331,15 +343,15 @@ impl MatrixBridgeClient {
         timeout_secs: u64,
     ) -> Result<Option<Message>> {
         let event_id = self.send_message(room_id, body, mention).await?;
-        let _room = self.get_room(room_id)?;
         let own_user = self.client.user_id().map(|u| u.to_string()).unwrap_or_default();
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
+        let mut poll_window: u32 = 20;
 
         while tokio::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
-            let msgs = self.read_messages(room_id, 10).await?;
+            let msgs = self.read_messages(room_id, poll_window.min(100)).await?;
             let mut found_ours = false;
             for msg in &msgs {
                 if msg.event_id == event_id {
@@ -349,6 +361,11 @@ impl MatrixBridgeClient {
                 if found_ours && msg.sender != own_user && !msg.decryption_failed {
                     return Ok(Some(msg.clone()));
                 }
+            }
+
+            // Widen the window if our message is scrolling out
+            if !found_ours && poll_window < 100 {
+                poll_window = (poll_window + 20).min(100);
             }
         }
 

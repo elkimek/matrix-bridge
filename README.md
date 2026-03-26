@@ -11,7 +11,7 @@ Send and read end-to-end encrypted messages in Matrix rooms from your terminal o
 - **MCP server** — 5 tools exposed over stdio for any MCP client
 - **Agent-agnostic** — no hardcoded bot names or provider assumptions
 - **Single binary** — no Python, no venv, no libolm. Just download and run.
-- **Cross-platform** — Linux (x86/ARM), macOS (Intel/Apple Silicon), Windows
+- **Cross-platform** — Linux (x86/ARM), macOS (Intel/Apple Silicon). Windows support planned.
 - **TOFU trust** — Trust On First Use device verification, suitable for bot-to-bot communication
 
 ## Install
