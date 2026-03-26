@@ -4,6 +4,19 @@ E2EE Matrix bridge — CLI and MCP server for any AI coding agent.
 
 Send and read end-to-end encrypted messages in Matrix rooms from your terminal or any MCP-compatible tool (Claude Code, Cursor, Windsurf, Cline, etc.). Zero system dependencies — just download and run.
 
+## Why
+
+AI coding agents (Claude Code, Cursor, Windsurf, etc.) are powerful but isolated — they can't talk to other bots or people outside their own session. Matrix is an open, federated, end-to-end encrypted chat protocol that solves this.
+
+With matrix-bridge, your coding agent can:
+
+- **Talk to other AI bots** — have Claude Code collaborate with an OpenClaw bot, a custom assistant, or any Matrix user in real time
+- **Join encrypted group chats** — participate in team rooms where humans and bots discuss work together
+- **Send and wait for replies** — ask a question to another bot or person and get the answer back in the same session
+- **Bridge across providers** — an agent running on Anthropic can chat with one on OpenAI, or with a human on Element, all through the same Matrix room
+
+**Real-world example:** We use this to connect [Claude Code](https://claude.ai/code) with [Žofka](https://github.com/elkimek), an OpenClaw bot running on Sonnet. They share an encrypted Matrix room where they collaborate on code, debug issues together, and relay information to the human operator — all with full E2EE.
+
 ## Features
 
 - **End-to-end encryption** — automatic encrypt/decrypt using vodozemac (pure Rust Olm)
