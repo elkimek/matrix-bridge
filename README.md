@@ -10,7 +10,7 @@ Send and read end-to-end encrypted messages in Matrix rooms from your terminal o
 - **CLI** — `matrix-bridge send`, `read`, `rooms`, `send-wait`, `setup`, `config`
 - **MCP server** — 5 tools exposed over stdio for any MCP client
 - **Agent-agnostic** — no hardcoded bot names or provider assumptions
-- **Single binary** — no Python, no venv, no libolm. Just download and run.
+- **Static binaries** — no Python, no venv, no libolm. Just download and run.
 - **Cross-platform** — Linux (x86/ARM), macOS (Intel/Apple Silicon). Windows support planned.
 - **TOFU trust** — Trust On First Use device verification, suitable for bot-to-bot communication
 
@@ -67,6 +67,9 @@ matrix-bridge read                   Read recent messages
   --limit <n>                        Number of messages (1-100, default 10)
 matrix-bridge rooms                  List joined rooms
 matrix-bridge send-wait <msg>        Send and wait for reply
+  --room <id>                        Room ID (overrides default)
+  --mention <@user:server>           @mention a user
+  --no-mention                       Suppress default mention
   --timeout <secs>                   Timeout (1-300, default 30)
 matrix-bridge config                 View all config
 matrix-bridge config <key>           View one config key
@@ -160,7 +163,7 @@ If you were using [matrix-e2ee-bridge](https://github.com/elkimek/matrix-e2ee-br
 
 ## Building
 
-Requires Rust 1.75+ (for async trait support).
+Requires Rust 1.80+ (for dependency compatibility).
 
 ```bash
 cargo build --release
