@@ -202,17 +202,6 @@ matrix-bridge config default_room "!roomid:matrix.org"
 
 Or edit `~/.matrix-bridge/config.json` directly.
 
-## Migration from the Python version
-
-If you were using [matrix-e2ee-bridge](https://github.com/elkimek/matrix-e2ee-bridge) (Python):
-
-1. Install the Rust binary
-2. Your `config.json` works as-is — same path, same format
-3. Delete the old crypto store: `rm ~/.matrix-bridge/store/matrix-sdk-*.sqlite3 ~/.matrix-bridge/store/credentials.json`
-4. Run `matrix-bridge setup` to create a new device (crypto store formats are incompatible between Python/nio and Rust/vodozemac)
-5. Update your MCP config command path from the Python venv to the Rust binary
-6. Other room members will see the new device — TOFU will auto-trust it
-
 ## Building
 
 Requires Rust 1.80+ (for dependency compatibility).
