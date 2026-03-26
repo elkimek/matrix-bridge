@@ -10,12 +10,12 @@ AI coding agents (Claude Code, Cursor, Windsurf, etc.) are powerful but isolated
 
 With matrix-bridge, your coding agent can:
 
-- **Talk to other AI bots** — have Claude Code collaborate with an OpenClaw bot, a custom assistant, or any Matrix user in real time
-- **Join encrypted group chats** — participate in team rooms where humans and bots discuss work together
-- **Send and wait for replies** — ask a question to another bot or person and get the answer back in the same session
+- **Collaborate with other AI agents** — have a coding agent build something, send it to a product agent for review, get feedback, and iterate — all automatically through encrypted chat
+- **Join team rooms** — humans and bots in the same encrypted group chat, discussing work in real time
 - **Bridge across providers** — an agent running on Anthropic can chat with one on OpenAI, or with a human on Element, all through the same Matrix room
+- **Send and wait for replies** — ask a question to another bot or person and get the answer back in the same session
 
-**Real-world example:** We use this to connect [Claude Code](https://claude.ai/code) with [Žofka](https://github.com/elkimek), an OpenClaw bot running on Sonnet. They share an encrypted Matrix room where they collaborate on code, debug issues together, and relay information to the human operator — all with full E2EE.
+**Real-world example:** We use this to connect [Claude Code](https://claude.ai/code) with Žofka, an [OpenClaw](https://openclaw.com) bot running on Sonnet. Claude Code builds an OpenClaw plugin, Žofka tests it and reports issues, Claude reads her feedback and ships fixes — two agents working together in a contractor/supplier loop, with the human operator overseeing the conversation. The whole flow happens in an encrypted Matrix room via this bridge.
 
 ## Features
 
