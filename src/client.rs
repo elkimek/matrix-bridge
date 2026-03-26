@@ -214,34 +214,34 @@ impl MatrixBridgeClient {
     }
 
     /// Read recent messages from a room.
-    /// Fetches raw events then attempts decryption via the room's olm machine.
+    /// Uses room.messages() which auto-decrypts E2EE events via the SDK's olm machine.
     pub async fn read_messages(
         &self,
         room_id: &str,
         limit: u32,
     ) -> Result<Vec<Message>> {
-        use matrix_sdk::ruma::api::client::message::get_message_events;
-        use matrix_sdk::ruma::events::{AnyTimelineEvent, AnyMessageLikeEvent};
+        use matrix_sdk::deserialized_responses::TimelineEventKind;
+        use matrix_sdk::room::MessagesOptions;
+        use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent, AnySyncTimelineEvent};
 
         let room = self.get_room(room_id)?;
 
-        let mut options = get_message_events::v3::Request::new(
-            room.room_id().to_owned(),
-            matrix_sdk::ruma::api::Direction::Backward,
-        );
+        let mut options = MessagesOptions::backward();
         options.limit = limit.into();
 
-        let response = self
-            .client
-            .send(options)
+        let response = room
+            .messages(options)
             .await
             .map_err(|e| BridgeError::Matrix(e.to_string()))?;
 
         let mut messages = Vec::new();
 
-        for raw_event in &response.chunk {
-            match raw_event.deserialize() {
-                Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(msg))) => {
+        for timeline_event in &response.chunk {
+            let decryption_failed = matches!(&timeline_event.kind, TimelineEventKind::UnableToDecrypt { .. });
+
+            // .raw() returns the decrypted event for Decrypted, or the raw event for PlainText/UTD
+            match timeline_event.kind.raw().deserialize() {
+                Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg))) => {
                     let body = match msg.as_original() {
                         Some(original) => original.content.body().to_string(),
                         None => continue,
@@ -261,10 +261,7 @@ impl MatrixBridgeClient {
                         decryption_failed: false,
                     });
                 }
-                Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(enc))) => {
-                    // Encrypted event the SDK couldn't auto-decrypt from the raw response.
-                    // The olm session keys may not be available for historical messages
-                    // fetched via pagination (only sync-received events are auto-decrypted).
+                Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(enc))) => {
                     let ts = enc.origin_server_ts();
                     let millis = i64::from(ts.0);
                     let timestamp = chrono::DateTime::from_timestamp_millis(millis)
@@ -280,16 +277,19 @@ impl MatrixBridgeClient {
                     });
                 }
                 Err(e) => {
-                    debug!("failed to deserialize event: {}", e);
-                    messages.push(Message {
-                        sender: "unknown".to_string(),
-                        body: "[unable to read message]".to_string(),
-                        timestamp: String::new(),
-                        event_id: String::new(),
-                        decryption_failed: true,
-                    });
+                    if decryption_failed {
+                        messages.push(Message {
+                            sender: "unknown".to_string(),
+                            body: "[encrypted message — unable to decrypt]".to_string(),
+                            timestamp: String::new(),
+                            event_id: String::new(),
+                            decryption_failed: true,
+                        });
+                    } else {
+                        debug!("failed to deserialize event: {}", e);
+                    }
                 }
-                _ => {} // skip non-message events (reactions, redactions, etc.)
+                _ => {} // skip non-message events
             }
         }
 
