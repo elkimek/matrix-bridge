@@ -2,7 +2,7 @@
 
 E2EE Matrix bridge — CLI and MCP server for any AI coding agent.
 
-Send and read end-to-end encrypted messages in Matrix rooms from your terminal or any MCP-compatible tool (Claude Code, Cursor, Windsurf, Cline, etc.). Single static binary, zero system dependencies.
+Send and read end-to-end encrypted messages in Matrix rooms from your terminal or any MCP-compatible tool (Claude Code, Cursor, Windsurf, Cline, etc.). Zero system dependencies — just download and run.
 
 ## Features
 
@@ -10,13 +10,13 @@ Send and read end-to-end encrypted messages in Matrix rooms from your terminal o
 - **CLI** — `matrix-bridge send`, `read`, `rooms`, `send-wait`, `setup`, `config`
 - **MCP server** — 5 tools exposed over stdio for any MCP client
 - **Agent-agnostic** — no hardcoded bot names or provider assumptions
-- **Static binaries** — no Python, no venv, no libolm. Just download and run.
+- **Static binaries** — no Python, no venv, no libolm
 - **Cross-platform** — Linux (x86/ARM), macOS (Intel/Apple Silicon). Windows support planned.
 - **TOFU trust** — Trust On First Use device verification, suitable for bot-to-bot communication
 
 ## Install
 
-### From source (currently the only option)
+Currently from source only (GitHub Releases and crates.io coming after broader testing):
 
 ```bash
 git clone https://github.com/elkimek/matrix-bridge.git
@@ -27,20 +27,37 @@ cargo build --release
 
 ## Quick start
 
+### 1. Create a Matrix account
+
+You need a Matrix account for the bridge. Create one at [element.io](https://app.element.io) or any Matrix homeserver, then note your user ID (e.g., `@mybot:matrix.org`) and password.
+
+### 2. Setup
+
 ```bash
-# 1. Interactive setup — login and create encryption keys
 matrix-bridge setup
+# Enter your Matrix user ID and password when prompted
+# This creates encryption keys and saves your session
+```
 
-# 2. Set a default room
-matrix-bridge config default_room '!roomid:matrix.org'
+### 3. Configure a default room
 
-# 3. Send a message
+```bash
+# Use the config command to avoid shell escaping issues with !
+matrix-bridge config default_room "!yourRoomId:matrix.org"
+```
+
+> **Tip:** Run `matrix-bridge rooms` to see your joined rooms and copy the room ID from there.
+
+### 4. Send and read
+
+```bash
+# Send a message
 matrix-bridge send "Hello from the bridge!"
 
-# 4. Read recent messages
-matrix-bridge read --limit 20
+# Read recent messages
+matrix-bridge read --limit 10
 
-# 5. Send and wait for a reply
+# Send and wait for a reply (30s timeout)
 matrix-bridge send-wait "ping" --timeout 30
 ```
 
@@ -81,7 +98,9 @@ The MCP server exposes 5 tools over stdin/stdout:
 | `list_rooms` | List joined rooms |
 | `join_room` | Join a room by ID or alias |
 
-### Claude Code / settings.json
+### Claude Code
+
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -93,7 +112,9 @@ The MCP server exposes 5 tools over stdin/stdout:
 }
 ```
 
-### Cursor / .cursor/mcp.json
+### Cursor
+
+Add to `.cursor/mcp.json`:
 
 ```json
 {
@@ -109,18 +130,18 @@ Works with any MCP client that supports stdio transport.
 
 ## Configuration
 
-Config lives at `~/.matrix-bridge/config.json`:
+Config lives at `~/.matrix-bridge/config.json` (created by `matrix-bridge setup`):
 
 ```json
 {
   "homeserver": "https://matrix.org",
-  "user_id": "@bot:matrix.org",
+  "user_id": "@mybot:matrix.org",
   "device_name": "matrix-bridge",
   "store_path": "/home/user/.matrix-bridge/store",
   "trust_mode": "tofu",
   "default_room": "!roomid:matrix.org",
-  "default_mention": "@user:matrix.org",
-  "notify_on_mention": "bot"
+  "default_mention": "@friend:matrix.org",
+  "notify_on_mention": "mybot"
 }
 ```
 
@@ -141,15 +162,43 @@ Config lives at `~/.matrix-bridge/config.json`:
 - **all** — Trust all devices unconditionally.
 - **explicit** — Manual verification only. Most secure, requires out-of-band verification.
 
+## Troubleshooting
+
+**All messages show as "[encrypted — unable to decrypt]"**
+
+This means the bridge doesn't have the Megolm session keys for those messages. This happens when:
+- You're reading messages sent before the bridge device was created — these can never be decrypted
+- You need to run `matrix-bridge setup` to create a fresh device with proper key exchange
+
+Messages sent *after* setup will decrypt normally.
+
+**"crypto store doesn't match" error during setup**
+
+Delete the old crypto store and run setup again:
+```bash
+rm ~/.matrix-bridge/store/matrix-sdk-*.sqlite3 ~/.matrix-bridge/store/credentials.json
+matrix-bridge setup
+```
+
+**Shell escaping issues with room IDs**
+
+Room IDs start with `!` which bash interprets as history expansion. Use double quotes:
+```bash
+matrix-bridge config default_room "!roomid:matrix.org"
+```
+
+Or edit `~/.matrix-bridge/config.json` directly.
+
 ## Migration from the Python version
 
 If you were using [matrix-e2ee-bridge](https://github.com/elkimek/matrix-e2ee-bridge) (Python):
 
 1. Install the Rust binary
 2. Your `config.json` works as-is — same path, same format
-3. Run `matrix-bridge setup` to create a new device (crypto store formats are incompatible between Python/nio and Rust/vodozemac)
-4. Update your MCP config command path from the Python venv to the Rust binary
-5. Other room members will see the new device — TOFU will auto-trust it
+3. Delete the old crypto store: `rm ~/.matrix-bridge/store/matrix-sdk-*.sqlite3 ~/.matrix-bridge/store/credentials.json`
+4. Run `matrix-bridge setup` to create a new device (crypto store formats are incompatible between Python/nio and Rust/vodozemac)
+5. Update your MCP config command path from the Python venv to the Rust binary
+6. Other room members will see the new device — TOFU will auto-trust it
 
 ## Building
 
