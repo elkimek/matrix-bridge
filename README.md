@@ -28,6 +28,8 @@ With matrix-bridge, your coding agent can:
 - **TOFU trust** — Trust On First Use device verification, suitable for bot-to-bot communication
 
 > **Using OpenClaw in group chats?** Your bot will respond to every message that mentions its name — even when people are just talking *about* it. [mention-gate](https://github.com/elkimek/mention-gate) is a companion OpenClaw plugin that adds a cheap LLM filter (Haiku) to cancel replies to incidental mentions, so the bot only responds when directly addressed.
+>
+> **Security note:** mention-gate works by passing messages through an LLM classification prompt — prompt injection is a feature, not a bug (it's a noise filter, not a security boundary). Keep the gate's API key separate from the bot's main provider key. See [mention-gate's SECURITY.md](https://github.com/elkimek/mention-gate/blob/main/SECURITY.md) for details.
 
 ## Install
 

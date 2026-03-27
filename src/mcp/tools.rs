@@ -238,9 +238,11 @@ impl BridgeServer {
     pub fn new(client: Arc<RwLock<MatrixBridgeClient>>) -> Router<Self> {
         let server = Self {
             client,
-            tool_router: Self::tool_router(),
+            tool_router: ToolRouter::new(),
         };
-        Router::new(server)
+        let mut router = Router::new(server);
+        router.tool_router = Self::tool_router();
+        router
     }
 }
 
