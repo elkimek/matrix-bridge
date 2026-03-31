@@ -15,7 +15,7 @@ With matrix-bridge, your coding agent can:
 - **Bridge across providers** — an agent running on Anthropic can chat with one on OpenAI, or with a human on Element, all through the same Matrix room
 - **Send and wait for replies** — ask a question to another bot or person and get the answer back in the same session
 
-**Real-world example:** We use this to connect [Claude Code](https://claude.ai/code) with Žofka, an [OpenClaw](https://openclaw.com) bot running on Sonnet. Claude Code builds an OpenClaw plugin, Žofka tests it and reports issues, Claude reads her feedback and ships fixes — two agents working together in a contractor/supplier loop, with the human operator overseeing the conversation. The whole flow happens in an encrypted Matrix room via this bridge.
+**Real-world example:** We use this to connect [Claude Code](https://claude.ai/code) with Žofka, a bot running on [Hermes Agent](https://github.com/hermes-agent/hermes-agent). Claude Code builds a plugin, Žofka tests it and reports issues, Claude reads her feedback and ships fixes — two agents working together in a contractor/supplier loop, with the human operator overseeing the conversation. The whole flow happens in an encrypted Matrix room via this bridge.
 
 ## Features
 
@@ -26,10 +26,6 @@ With matrix-bridge, your coding agent can:
 - **Static binaries** — no Python, no venv, no libolm
 - **Cross-platform** — Linux (x86/ARM), macOS (Intel/Apple Silicon). Windows support planned.
 - **TOFU trust** — Trust On First Use device verification, suitable for bot-to-bot communication
-
-> **Using OpenClaw in group chats?** Your bot will respond to every message that mentions its name — even when people are just talking *about* it. [mention-gate](https://github.com/elkimek/mention-gate) is a companion OpenClaw plugin that adds a cheap LLM filter (Haiku) to cancel replies to incidental mentions, so the bot only responds when directly addressed.
->
-> **Security note:** mention-gate works by passing messages through an LLM classification prompt — prompt injection is a feature, not a bug (it's a noise filter, not a security boundary). Keep the gate's API key separate from the bot's main provider key. See [mention-gate's SECURITY.md](https://github.com/elkimek/mention-gate/blob/main/SECURITY.md) for details.
 
 ## Install
 
@@ -144,6 +140,69 @@ Add to `.cursor/mcp.json`:
 ```
 
 Works with any MCP client that supports stdio transport.
+
+## Using with AI agent gateways
+
+The bridge connects **coding agents** (Claude Code, Cursor, etc.) to Matrix. On the other side of the room you typically have a **gateway bot** — an always-on agent that lives in Matrix and responds to messages. The two main gateways are OpenClaw and Hermes Agent, and they handle Matrix natively (no bridge needed on their side).
+
+### Hermes Agent
+
+[Hermes Agent](https://github.com/hermes-agent/hermes-agent) connects to Matrix directly via its built-in gateway. No bridge needed on the Hermes side — just configure Matrix in `~/.hermes/.env`:
+
+```bash
+MATRIX_HOMESERVER=https://matrix.org
+MATRIX_USER_ID=@yourbot:matrix.org
+MATRIX_PASSWORD=your-password
+MATRIX_ACCESS_TOKEN=your-token
+MATRIX_ENCRYPTION=true
+MATRIX_ALLOWED_USERS=@you:matrix.org
+```
+
+Then start the gateway:
+
+```bash
+hermes gateway start
+```
+
+**Group chat mention handling:** Hermes doesn't have built-in mention filtering for Matrix (unlike Discord/Telegram which have `require_mention`). In group rooms, the bot responds to every message. Two approaches:
+
+1. **SOUL.md (soft gate)** — Add instructions to `~/.hermes/SOUL.md` telling the bot to distinguish between being addressed directly vs. mentioned in passing. The bot uses judgment — it may still respond to incidental mentions when it has something useful to add. This is often the better behavior for small team rooms.
+
+2. **`require_mention` (hard gate)** — Not yet available for Matrix in Hermes. Planned as an upstream PR to bring parity with Discord/Telegram.
+
+### OpenClaw
+
+[OpenClaw](https://openclaw.com) also connects to Matrix natively via its gateway. Configure Matrix in `~/.openclaw/openclaw.json` and restart the gateway.
+
+**Group chat mention handling:** OpenClaw supports [mention-gate](https://github.com/elkimek/mention-gate), a companion plugin that uses a cheap LLM (Haiku) to classify intent — "talking *to* the bot" vs. "talking *about* it" — and cancels replies to incidental mentions.
+
+> **Security note:** mention-gate passes messages through an LLM classification prompt — prompt injection is a feature, not a bug (it's a noise filter, not a security boundary). Keep the gate's API key separate from the bot's main provider key. See [mention-gate's SECURITY.md](https://github.com/elkimek/mention-gate/blob/main/SECURITY.md) for details.
+
+### The typical setup
+
+```
+ Your machine                                        Your server
+┌──────────────────┐                                ┌──────────────────┐
+│  Claude Code     │                                │  Hermes Agent    │
+│  Cursor / Cline  │         Matrix Room            │  or OpenClaw     │
+│  Windsurf / ...  │      ┌──────────────┐          │                  │
+│                  │      │  E2EE group  │          │  ┌────────────┐  │
+│  ┌────────────┐  │◄────►│  chat with   │◄────────►│  │  gateway   │  │
+│  │ matrix-    │  │      │  humans and  │          │  │  (native   │  │
+│  │ bridge     │  │      │  bots        │          │  │   Matrix)  │  │
+│  └────────────┘  │      └──────┬───────┘          │  └────────────┘  │
+└──────────────────┘             │                  └──────────────────┘
+   coding agent                  │                     always-on bot
+   builds, tests, ships    ┌─────┴──────┐             reviews, chats,
+                           │  Element / │             runs tools
+                           │  any Matrix│
+                           │  client    │
+                           └────────────┘
+                            human operator
+                            watches, steers
+```
+
+The bridge runs on the coding agent side. The gateway bot connects directly. Both meet in the same encrypted room, with the human operator joining via Element or any Matrix client.
 
 ## Configuration
 
